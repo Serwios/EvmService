@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.10.xsd">
+
+    <!-- ChangeSet for creating pg_trgm extension -->
+    <changeSet id="0" author="yaroslav">
+        <sql>
+            CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        </sql>
+    </changeSet>
+
+    <changeSet id="1" author="yaroslav">
+        <sql>
+            CREATE TABLE transactions (
+            hash VARCHAR(66) NOT NULL,
+            from_address VARCHAR(42) NOT NULL,
+            to_address VARCHAR(42),
+            value NUMERIC(38, 0),
+            gas BIGINT,
+            gas_price BIGINT,
+            block_number BIGINT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            search_vector tsvector,
+            input_data TEXT,
+            PRIMARY KEY (hash, block_number)
+            ) PARTITION BY RANGE (block_number);
+        </sql>
+    </changeSet>
+
+    <changeSet id="2" author="yaroslav">
+        <sql splitStatements="false">
+            CREATE FUNCTION transactions_search_vector_update() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+            NEW.search_vector :=
+            to_tsvector('english', COALESCE(NEW.hash, '') || ' ' ||
+            COALESCE(NEW.from_address, '') || ' ' ||
+            COALESCE(NEW.to_address, ''));
+            RETURN NEW;
+            END;
+            $$;
+        </sql>
+    </changeSet>
+
+    <changeSet id="3" author="yaroslav">
+        <sql>
+            CREATE TRIGGER tsvectorupdate BEFORE INSERT OR UPDATE
+            ON transactions
+            FOR EACH ROW EXECUTE FUNCTION transactions_search_vector_update();
+        </sql>
+    </changeSet>
+
+    <changeSet id="4" author="yaroslav">
+        <sql splitStatements="false">
+            CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions (hash);
+            CREATE INDEX IF NOT EXISTS idx_transactions_from_address ON transactions (from_address);
+            CREATE INDEX IF NOT EXISTS idx_transactions_to_address ON transactions (to_address);
+            CREATE INDEX IF NOT EXISTS idx_transactions_search_vector ON transactions USING GIN (search_vector);
+        </sql>
+    </changeSet>
+
+    <changeSet id="5" author="yaroslav">
+        <sql splitStatements="false" endDelimiter="$$;">
+            -- Create partitions with a step of 100k blocks
+
+            -- Partition 1
+            CREATE TABLE IF NOT EXISTS transactions_p21088704_21188703
+            PARTITION OF transactions
+            FOR VALUES FROM (21088704) TO (21188704);
+
+            DO $$
+            BEGIN
+            IF NOT EXISTS (
+            SELECT 1 FROM pg_trigger WHERE tgname = 'tsvectorupdate_p21088704_21188703'
+            ) THEN
+            CREATE TRIGGER tsvectorupdate_p21088704_21188703 BEFORE INSERT OR UPDATE
+            ON transactions_p21088704_21188703
+            FOR EACH ROW EXECUTE FUNCTION transactions_search_vector_update();
+            END IF;
+            END;
+            $$;
+
+            CREATE INDEX IF NOT EXISTS idx_transactions_hash_p21088704_21188703 ON transactions_p21088704_21188703 (hash);
+            CREATE INDEX IF NOT EXISTS idx_transactions_from_address_p21088704_21188703 ON transactions_p21088704_21188703 (from_address);
+            CREATE INDEX IF NOT EXISTS idx_transactions_to_address_p21088704_21188703 ON transactions_p21088704_21188703 (to_address);
+            CREATE INDEX IF NOT EXISTS idx_transactions_search_vector_p21088704_21188703
+            ON transactions_p21088704_21188703 USING GIN (search_vector);
+
+        </sql>
+    </changeSet>
+
+    <changeSet id="6" author="yaroslav">
+        <sql>
+            ALTER TABLE transactions ADD CONSTRAINT transactions_hash_block_number_unique UNIQUE (hash, block_number);
+        </sql>
+    </changeSet>
+
+    <!-- New changeSet for blocks table -->
+    <changeSet id="7" author="yaroslav">
+        <sql>
+            CREATE TABLE blocks (
+            id BIGSERIAL PRIMARY KEY,
+            key VARCHAR(255) UNIQUE NOT NULL,
+            block_number NUMERIC(38, 0) NOT NULL
+            );
+        </sql>
+    </changeSet>
+
+    <!-- Adding unique constraint on block_number for blocks table -->
+    <changeSet id="8" author="yaroslav">
+        <addUniqueConstraint
+                tableName="blocks"
+                columnNames="block_number"
+                constraintName="uk_block_number_unique" />
+    </changeSet>
+</databaseChangeLog>

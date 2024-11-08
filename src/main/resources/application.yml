@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: evmservice
+  datasource:
+    url: jdbc:postgresql://db:5432/evm
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  liquibase:
+    enabled: true
+    change-log: classpath:/db/changelog/db.changelog-1.0-initial-schema.xml
+web3j:
+  client-address: https://mainnet.infura.io/v3/${INFURA_API_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+
+logging:
+  level:
+    root: INFO
