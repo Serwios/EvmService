@@ -16,7 +16,7 @@ This project implements a database structure for managing blockchain transaction
 # Setup Instructions
 1. Clone this repo: git clone https://github.com/Serwios/EvmService.git
 2. cd EvmService
-3. docker compose up
+3. docker-compose up --build
 
 # Useful links
 | Name | Link | 
