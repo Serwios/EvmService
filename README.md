@@ -11,6 +11,8 @@ This project implements a database structure for managing blockchain transaction
 
 # Prerequisites
 1. Create account here and acquire api key -  https://app.infura.io/
+2. Set key in this file : .env
+INFURA_API_KEY=
 2. Install docker and run docker compose up
 
 # Setup Instructions
